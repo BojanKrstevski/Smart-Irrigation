@@ -1,0 +1,10 @@
+package irrigation_system.backend.dto;
+
+public record IrrigationScheduleResponse(
+        Long id,
+        Integer intervalDays,
+        double waterAmount,
+        boolean active,
+        Long parcelId
+) {
+}
