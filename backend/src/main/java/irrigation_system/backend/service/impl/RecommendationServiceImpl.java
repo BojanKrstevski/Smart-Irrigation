@@ -1,11 +1,14 @@
 package irrigation_system.backend.service.impl;
 
+import irrigation_system.backend.dto.WeatherResponse;
 import irrigation_system.backend.model.Parcel;
 import irrigation_system.backend.model.Recommendation;
 import irrigation_system.backend.repository.ParcelRepository;
 import irrigation_system.backend.repository.RecommendationRepository;
 import irrigation_system.backend.service.RecommendationService;
 import org.springframework.stereotype.Service;
+
+import irrigation_system.backend.service.WeatherService;
 
 import java.time.LocalDate;
 
@@ -14,13 +17,15 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     private final ParcelRepository parcelRepository;
     private final RecommendationRepository recommendationRepository;
+    private final WeatherService weatherService;
 
     public RecommendationServiceImpl(
             ParcelRepository parcelRepository,
-            RecommendationRepository recommendationRepository
-    ) {
+            RecommendationRepository recommendationRepository,
+            WeatherService weatherService) {
         this.parcelRepository = parcelRepository;
         this.recommendationRepository = recommendationRepository;
+        this.weatherService = weatherService;
     }
 
     @Override
@@ -28,9 +33,25 @@ public class RecommendationServiceImpl implements RecommendationService {
         Parcel parcel = parcelRepository.findById(parcelId)
                 .orElseThrow(() -> new IllegalArgumentException("Parcel not found with id: " + parcelId));
 
-        double temperature = 30.0;
-        double humidity = 35.0;
-        boolean rainExpected = false;
+        double temperature;
+        double humidity;
+        boolean rainExpected;
+
+        try {
+            WeatherResponse weather = weatherService.getWeatherForParcel(parcelId);
+
+            temperature = weather.temperature();
+            humidity = weather.humidity();
+            rainExpected = weather.rain() > 0;
+
+        } catch (Exception e) {
+            System.out.println("Weather API failed, using fallback values");
+
+            temperature = 30.0;
+            humidity = 35.0;
+            rainExpected = false;
+        }
+
         double waterAmount = calculateWaterAmount(parcel, temperature, humidity, rainExpected);
         boolean irrigationNeeded = waterAmount > 0;
 
@@ -69,9 +90,11 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     private String buildExplanation(double temperature, double humidity, boolean rainExpected, boolean irrigationNeeded) {
         if (!irrigationNeeded) {
-            return "Irrigation is not needed because humidity is high or rain is expected.";
+            return "Weather API data: temperature is " + temperature + "°C, humidity is " + humidity +
+                    "%, rain expected: " + rainExpected + ". Irrigation is not needed.";
         }
 
-        return "Temperature is high, humidity is low, and no rain is expected in the next period, so irrigation is needed.";
+        return "Weather API data: temperature is " + temperature + "°C, humidity is " + humidity +
+                "%, rain expected: " + rainExpected + ". Irrigation is needed.";
     }
 }
