@@ -1,4 +1,7 @@
+from datetime import date, timedelta
 from typing import Optional
+
+MAX_SOIL_BUFFER_MM = 30.0
 
 CROP_DAILY_WATER_MM = {
     "tomato": 5.0, "domati": 5.0, "domat": 5.0,
@@ -64,6 +67,54 @@ def recency_factor(days_since_last: Optional[int]) -> float:
     return 1.0
 
 
+def compute_soil_buffer_mm(
+    recent_irrigations: list,
+    area_m2: float,
+    crop: str,
+    today: Optional[date] = None,
+) -> float:
+    """Estimate residual soil moisture (mm above baseline) from past irrigations.
+
+    Simple bucket model: each irrigation adds (waterAmount / area_m2) mm to the
+    buffer; each day the buffer decays by `base_water_need_mm(crop)` (≈ daily
+    evapotranspiration). The buffer is clamped to [0, MAX_SOIL_BUFFER_MM] —
+    excess water drains away.
+
+    `recent_irrigations` is expected to be a list of objects with `.date` and
+    `.waterAmount` attributes (Pydantic IrrigationRecord) or matching dict keys.
+    """
+    if not recent_irrigations or area_m2 <= 0:
+        return 0.0
+    if today is None:
+        today = date.today()
+
+    daily_loss = base_water_need_mm(crop)
+
+    by_date: dict[date, float] = {}
+    for irr in recent_irrigations:
+        irr_date = getattr(irr, "date", None) or (irr.get("date") if isinstance(irr, dict) else None)
+        irr_amount = getattr(irr, "waterAmount", None) or (irr.get("waterAmount") if isinstance(irr, dict) else None)
+        if irr_date is None or irr_amount is None:
+            continue
+        if irr_date > today:
+            continue  # ignore future-dated records
+        by_date[irr_date] = by_date.get(irr_date, 0.0) + float(irr_amount)
+
+    if not by_date:
+        return 0.0
+
+    cursor = min(by_date.keys())
+    buffer = 0.0
+    while cursor <= today:
+        if cursor in by_date:
+            buffer += by_date[cursor] / area_m2
+        if cursor < today:
+            buffer = max(0.0, buffer - daily_loss)
+        cursor += timedelta(days=1)
+
+    return round(min(buffer, MAX_SOIL_BUFFER_MM), 2)
+
+
 def compute_deficit(
     crop: str,
     temp_max_c: float,
@@ -71,6 +122,7 @@ def compute_deficit(
     rain_last_24h_mm: float,
     rain_next_24h_mm: float,
     days_since_last_irrigation: Optional[int],
+    soil_buffer_mm: float = 0.0,
 ) -> dict:
     base = base_water_need_mm(crop)
     t_f = temperature_factor(temp_max_c)
@@ -79,13 +131,14 @@ def compute_deficit(
 
     gross = base * t_f * h_f * r_f
     effective_rain = (rain_last_24h_mm + rain_next_24h_mm) * 0.7
-    deficit = max(0.0, gross - effective_rain)
+    deficit = max(0.0, gross - effective_rain - soil_buffer_mm)
 
     return {
         "baseMm": round(base, 2),
         "temperatureFactor": round(t_f, 2),
         "humidityFactor": round(h_f, 2),
         "recencyFactor": round(r_f, 2),
+        "soilBufferMm": round(soil_buffer_mm, 2),
         "grossNeedMm": round(gross, 2),
         "effectiveRainMm": round(effective_rain, 2),
         "deficitMm": round(deficit, 2),

@@ -3,6 +3,7 @@ from datetime import date
 from agronomy import (
     best_time_from_forecast,
     compute_deficit,
+    compute_soil_buffer_mm,
     liters_for_area,
 )
 from llm import generate_explanation
@@ -32,9 +33,19 @@ async def build_recommendation(req: RecommendationRequest) -> RecommendationResp
     rain_last = weather_data["rainLast24hMm"]
     rain_next = weather_data["rainNext24hMm"]
 
-    days_since = None
-    if req.lastIrrigation is not None:
-        days_since = (date.today() - req.lastIrrigation).days
+    today = date.today()
+
+    if req.recentIrrigations:
+        soil_buffer = compute_soil_buffer_mm(
+            recent_irrigations=req.recentIrrigations,
+            area_m2=req.size,
+            crop=req.cropType,
+            today=today,
+        )
+        days_since = None  # bucket model already accounts for recency
+    else:
+        soil_buffer = 0.0
+        days_since = (today - req.lastIrrigation).days if req.lastIrrigation else None
 
     comp = compute_deficit(
         crop=req.cropType,
@@ -43,6 +54,7 @@ async def build_recommendation(req: RecommendationRequest) -> RecommendationResp
         rain_last_24h_mm=rain_last,
         rain_next_24h_mm=rain_next,
         days_since_last_irrigation=days_since,
+        soil_buffer_mm=soil_buffer,
     )
 
     deficit = comp["deficitMm"]

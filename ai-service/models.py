@@ -34,6 +34,7 @@ class Computation(BaseModel):
     temperatureFactor: float
     humidityFactor: float
     recencyFactor: float
+    soilBufferMm: float
     grossNeedMm: float
     effectiveRainMm: float
     deficitMm: float
