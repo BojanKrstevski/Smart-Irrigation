@@ -8,11 +8,11 @@
         <version>3.4.3</version>
         <relativePath/>
     </parent>
-    <groupId>mk.ukim.finki.it</groupId>
-    <artifactId>ReserveNGo</artifactId>
+    <groupId>irrigation_system</groupId>
+    <artifactId>smart-irrigation</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ReserveNGo</name>
-    <description>ReserveNGo</description>
+    <name>Smart Irrigation</name>
+    <description>Smart Irrigation</description>
     <url/>
     <licenses>
         <license/>
@@ -135,6 +135,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <mainClass>irrigation_system.IrrigationSystem</mainClass>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>
